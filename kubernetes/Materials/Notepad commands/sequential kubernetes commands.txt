@@ -1,0 +1,81 @@
+free -h
+swapoff -a
+free -h
+vim /etc/fstab
+#swap
+
+
+
+1  cd
+2    passwd root
+3    yum install httpd
+4    yum install vim*
+5    vim /etc/ssh/sshd_config
+6    systemctl restart sshd
+
+7  # Docker 
+
+     yum install -y yum-utils
+8    sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+9    sudo yum install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+10   sudo systemctl start docker
+11   sudo systemctl enable docker
+     sudo systemctl status docker
+12   sudo docker run hello-world
+13   sudo systemctl start containerd
+14   sudo systemctl enable containerd
+
+15 # Set SELinux in permissive mode (effectively disabling it)
+
+     sudo setenforce 0
+     sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+
+16 # This overwrites any existing configuration in /etc/yum.repos.d/kubernetes.repo
+
+cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+EOF
+
+17   sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+     sudo systemctl enable --now kubelet
+18   systemctl start kubelet
+19   rm /etc/containerd/config.toml               y
+20   systemctl enable containerd
+21   echo '1' > /proc/sys/net/ipv4/ip_forward
+22   modprobe bridge
+23   modprobe br_netfilter
+25   kubeadm init --pod-network-cidr=192.168.0.0/16   or   kubeadm init --pod-network-cidr=10.244.0.0/16
+26   kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/tigera-operator.yaml
+27   kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/custom-resources.yaml
+28   kubectl get pods -n calico-system
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

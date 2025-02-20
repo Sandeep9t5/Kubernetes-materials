@@ -1,0 +1,180 @@
+					For CentOs 9
+============================================================================================================================
+
+
+K8 Master configuration
+============================
+
+yum update
+yum install httpd
+yum install vim*  -y
+
+
+( Optional )  To Enable ssh login
+----------------------------------
+
+vim /etc/ssh/sshd_config
+PermitRootLogin yes
+esc
+:wq!
+
+systemctl restart sshd
+
+
+
+ip addr
+
+
+hostname
+hostnamectl
+hostnamectl set-hostname MasterNode.Kubernetes.com       /              station10.example.com
+cat /etc/hostname
+bash
+
+
+vim /etc/hosts
+192.168.162.253   MasterNode.Kubernetes.com                               
+192.168.162.180  WorkerNode1.Kubernetes.com                              
+192.168.162.95  WorkerNode2.Kubernetes.com                              
+
+ping -c 10 MasterNode.Kubernetes.com                                    
+ping -c 10 WorkerNode1.Kubernetes.com                                   
+ping -c 10 WorkerNode2.Kubernetes.com 
+
+
+#swap (disable swap permanently)
+
+swapoff -a; sed -i '/swap/d' /etc/fstab
+
+
+
+# Set SELinux in permissive mode (effectively disabling it)
+==============================================================
+
+sudo setenforce 0
+sudo sed -i --follow-symlinks  's/^SELINUX=enforcing/SELINUX=disabled/' /etc/sysconfig/selinux/
+
+
+
+
+Kubernetes Ports :-
+=========================================
+
+Protocol   Direction	     Port Range	         Purpose	              Used By
+TCP	   Inbound	     6443	         Kubernetes API server	        All
+TCP	   Inbound	     2379-2380	         etcd server client API	    kube-apiserver, etcd
+TCP	   Inbound	     10250	         Kubelet API	            Self, Control plane
+TCP	   Inbound	     10259	         kube-scheduler	                Self
+TCP	   Inbound	     10257	         kube-controller-manager	Self
+
+firewall-cmd --add-port={6443,10250,10259,10257,2379-2380}/tcp
+firewall-cmd --permanent --add-port={6443,10250,10259,10257,2379-2380}/tcp
+firewall-cmd --complete-reload
+firewall-cmd --list-all
+
+
+
+vim /etc/sysctl.d/Kubernetes.conf
+net.bridge.bridge-nf-call-ip6tables=1
+net.bridge.bridge-nf-call-iptables=1
+
+
+
+systemctl stop firewalld
+systemctl disable firewalld
+
+
+
+
+Firewall Solution
+=====================================
+
+rm /etc/containerd/config.toml               -y
+systemctl restart containerd
+echo '1' > /proc/sys/net/ipv4/ip_forward
+modprobe bridge
+modprobe br_netfilter
+sudo systemctl status containerd
+
+
+
+
+
+sysctl --system
+
+yum install -y yum-utils device-mapper-persistent-data  lvm2
+kill -9 2989
+
+
+
+
+# Docker
+==================================== 
+
+yum-config-manager  --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+yum install -y containerd.io
+
+
+mkdir  -p  /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml
+
+systemctl restart containerd
+systemctl enable containerd
+systemctl status containerd
+
+
+
+
+# This overwrites any existing configuration in /etc/yum.repos.d/kubernetes.repo
+=====================================================================================
+
+vim /etc/yum.repos.d/Kubernetes.repo
+[Kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8.io/core:/stable:/v1.29/rpm/
+enable=1
+gpgcheck=1
+gpgkey=https://pkgs.k8.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+exclude=kubelet  kubeadm  cri-toos kubernetes-cni
+
+
+
+
+sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+systemctl start kubelet
+sudo systemctl enable --now kubelet
+systemctl status kubelet                                   ---------------------- ( here it will show as activating )
+
+
+kubeadm init --apiserver-advertise-address=192.168.  .    --pod-network-cidr=192.168.0.0/16  ignore-preflight-errors=all
+
+
+
+watch "crictl images"
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+export KUBECONFIG=/etc/kubernetes/admin.conf
+
+
+systemctl status kubelet                                 ---------------------- ( here it will show as active )
+
+
+kubectl get nodes
+kubectl get pods -n kube-system
+
+
+
+
+
+Pod networking
+===========================
+
+
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml -O
+kubectl apply -f calico.yaml
+
+systemctl restart kubelet
+systemctl status kubelet                    ---------------------- ( here it will show as enabled and  active )
+
+

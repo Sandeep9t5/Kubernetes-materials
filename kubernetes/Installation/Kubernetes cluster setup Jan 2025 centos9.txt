@@ -1,0 +1,467 @@
+					For CentOs 9
+============================================================================================================================
+
+
+K8 Master configuration
+============================
+
+yum update
+yum install httpd  -y
+yum install vim*  -y
+
+
+
+To Enable SSH login for root access
+========================================
+
+vim /etc/ssh/sshd_config
+PermitRootLogin yes
+esc
+:wq!
+
+systemctl restart sshd
+
+
+
+Hostname and Hosts Configuration:
+============================================
+
+ip addr
+
+hostname
+hostnamectl
+hostnamectl set-hostname MasterNode.Kubernetes.com       /              station10.example.com
+cat /etc/hostname
+bash
+
+
+vim /etc/hosts
+192.168.29.41   MasterNode.Kubernetes.com                               
+192.168.29.104  WorkerNode1.Kubernetes.com                              
+192.168.29.11  WorkerNode2.Kubernetes.com                              
+
+ping -c 10 MasterNode.Kubernetes.com                                    
+ping -c 10 WorkerNode1.Kubernetes.com                                   
+ping -c 10 WorkerNode2.Kubernetes.com  
+
+                                 
+
+#swap (disable swap Temporary)
+=====================================================================
+
+free -h
+swapoff -a
+free -h
+
+#swap (disable swap permanently)
+----------------------------------------
+
+vim /etc/fstab
+(Put # )  /dev/mapper/centos-swap swap                    swap    defaults        0 0
+(esc -> :wq!)
+
+or
+
+sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+
+or
+
+swapoff -a; sed -i '/swap/d' /etc/fstab
+
+
+# Set SELinux in permissive mode (effectively disabling it)
+==============================================================
+
+sudo setenforce 0
+sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+
+
+
+Kernel Modules and Network Settings
+Load two required modules and add configuration to make them loadable at boot time.
+=======================================================================================
+
+[root@master ~]# modprobe overlay
+[root@master ~]# modprobe br_netfilter
+
+cat <<EOF | sudo tee /etc/modules-load.d/containerd.conf
+overlay
+br_netfilter
+EOF
+
+Set up other prerequisites.
+
+cat <<EOF | sudo tee /etc/sysctl.d/99-kubernetes-cri.conf
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+EOF
+
+Firewall Configuration
+=====================================================
+
+Kubernetes Ports :-
+=========================================
+
+Protocol   Direction	     Port Range	         Purpose	              Used By
+TCP	   Inbound	     6443	         Kubernetes API server	        All
+TCP	   Inbound	     2379-2380	         etcd server client API	    kube-apiserver, etcd
+TCP	   Inbound	     10250	         Kubelet API	            Self, Control plane
+TCP	   Inbound	     10259	         kube-scheduler	                Self
+TCP	   Inbound	     10257	         kube-controller-manager	Self
+
+firewall-cmd --add-port={80,6443,10250,10251,10252,10255,10257,10259,2379-2380}/tcp
+firewall-cmd --permanent --add-port={80,6443,10250,10251,10252,10255,10257,10259,2379-2380}/tcp
+firewall-cmd --complete-reload
+firewall-cmd --list-all
+
+OR
+
+systemctl status firewalld
+systemctl stop firewalld
+systemctl disable firewalld
+
+systemctl start firewalld
+systemctl enable firewalld
+
+
+
+Install the containerd package
+===========================================================================================================
+
+
+[root@master ~]# dnf install -y containerd.io
+
+Create a configuration file for containerd and set it to default.
+[root@master ~]# mkdir -p /etc/containerd
+[root@master ~]# containerd config default | sudo tee /etc/containerd/config.toml
+
+Set cgroupdriver to systemd
+kubelet requires the cgroupdriver to be set to systemd. To do so, edit the following file:
+# vi /etc/containerd/config.toml 
+
+Find the following section: [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+
+And change the value of SystemdCgroup to true
+
+Once you are done, match the section in your file to the following:
+
+ [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+            BinaryName = ""
+            CriuImagePath = ""
+            CriuPath = ""
+            CriuWorkPath = ""
+            IoGid = 0
+            IoUid = 0
+            NoNewKeyring = false
+            NoPivotRoot = false
+            Root = ""
+            ShimCgroup = ""
+            SystemdCgroup = true
+
+# Docker
+==================================== 
+
+yum install -y yum-utils
+sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo yum install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo systemctl status docker
+sudo systemctl start containerd
+sudo systemctl enable containerd
+sudo systemctl status containerd
+
+
+
+# This overwrites any existing configuration in /etc/yum.repos.d/kubernetes.repo
+=====================================================================================
+
+cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+EOF
+
+
+
+Kubernetes Installation:
+==================================================================================
+
+sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+systemctl start kubelet
+sudo systemctl enable --now kubelet
+systemctl status kubelet                                   ---------------------- ( here it will show as activating )
+
+
+kubeadm init --ignore-preflight-errors=all
+
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+Or
+=====
+
+export KUBECONFIG=/etc/kubernetes/admin.conf
+
+
+not necessary
+====================
+systemctl status kubelet                                 ---------------------- ( here it will show as active )
+
+
+Check Node Status
+=====================================
+
+kubectl get nodes
+
+Check Pods
+======================================
+
+kubectl get pods -n kube-system
+
+
+Pod networking
+===========================
+
+
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml -O
+kubectl apply -f calico.yaml
+
+
+not necessary
+====================
+systemctl restart kubelet 
+systemctl enable kubelet 
+
+systemctl status kubelet                    ---------------------- ( here it will show as enabled and  active )
+
+
+
+
+
+
+After connection with worker
+====================================
+
+kubectl get nodes
+kubectl get pods -n kube-system -o wide
+
+
+
+
+#############################################################################################################################
+#############################################################################################################################
+
+
+
+
+K8 Worker-1 configuration
+============================
+
+
+yum update
+yum install httpd  -y
+yum install vim*  -y
+
+
+To Enable ssh login
+---------------------
+
+vim /etc/ssh/sshd_config
+PermitRootLogin yes
+esc
+:wq!
+
+systemctl restart sshd
+
+
+
+ip addr
+
+
+hostname
+hostnamectl
+hostnamectl set-hostname WorkerNode1.Kubernetes.com       
+hostnamectl set-hostname WorkerNode2.Kubernetes.com       
+cat /etc/hostname
+bash
+
+
+vim /etc/hosts
+192.168.29.41  MasterNode.Kubernetes.com                               
+192.168.29.104  WorkerNode1.Kubernetes.com                              
+192.168.29.11  WorkerNode2.Kubernetes.com                              
+
+ping -c 10 MasterNode.Kubernetes.com                                    
+ping -c 10 WorkerNode1.Kubernetes.com                                   
+ping -c 10 WorkerNode2.Kubernetes.com  
+
+#swap (disable swap Temporary)
+=====================================================================
+
+free -h
+swapoff -a
+free -h
+
+#swap (disable swap permanently)
+----------------------------------------
+
+vim /etc/fstab
+(Put # )  /dev/mapper/centos-swap swap                    swap    defaults        0 0
+(esc -> :wq!)
+
+or
+
+sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+
+or
+
+swapoff -a; sed -i '/swap/d' /etc/fstab
+
+
+# Set SELinux in permissive mode (effectively disabling it)
+==============================================================
+
+sudo setenforce 0
+sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+
+
+Load two required modules and add configuration to make them loadable at boot time.
+=======================================================================================
+
+[root@master ~]# modprobe overlay
+[root@master ~]# modprobe br_netfilter
+
+cat <<EOF | sudo tee /etc/modules-load.d/containerd.conf
+overlay
+br_netfilter
+EOF
+
+Set up other prerequisites.
+
+cat <<EOF | sudo tee /etc/sysctl.d/99-kubernetes-cri.conf
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+EOF
+
+
+Kubernetes Ports :-
+=========================================
+
+Protocol   Direction	     Port Range	         Purpose	              Used By
+TCP	   Inbound	     6443	         Kubernetes API server	        All
+TCP	   Inbound	     2379-2380	         etcd server client API	    kube-apiserver, etcd
+TCP	   Inbound	     10250	         Kubelet API	            Self, Control plane
+TCP	   Inbound	     10259	         kube-scheduler	                Self
+TCP	   Inbound	     10257	         kube-controller-manager	Self
+
+firewall-cmd --add-port={80,6443,10250,10251,10252,10255,10257,10259,2379-2380}/tcp
+firewall-cmd --permanent --add-port={80,6443,10250,10251,10252,10255,10257,10259,2379-2380}/tcp
+firewall-cmd --complete-reload
+firewall-cmd --list-all
+
+OR
+
+systemctl status firewalld
+systemctl stop firewalld
+systemctl disable firewalld
+
+systemctl start firewalld
+systemctl enable firewalld
+
+
+
+Install the containerd package
+===========================================================================================================
+
+
+[root@master ~]# dnf install -y containerd.io
+
+Create a configuration file for containerd and set it to default.
+[root@master ~]# mkdir -p /etc/containerd
+[root@master ~]# containerd config default | sudo tee /etc/containerd/config.toml
+
+Set cgroupdriver to systemd
+kubelet requires the cgroupdriver to be set to systemd. To do so, edit the following file:
+# vi /etc/containerd/config.toml 
+
+Find the following section: [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+
+And change the value of SystemdCgroup to true
+
+Once you are done, match the section in your file to the following:
+
+ [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+            BinaryName = ""
+            CriuImagePath = ""
+            CriuPath = ""
+            CriuWorkPath = ""
+            IoGid = 0
+            IoUid = 0
+            NoNewKeyring = false
+            NoPivotRoot = false
+            Root = ""
+            ShimCgroup = ""
+            SystemdCgroup = true
+
+# Docker
+==================================== 
+
+yum install -y yum-utils
+sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo yum install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo systemctl status docker
+sudo systemctl start containerd
+sudo systemctl enable containerd
+sudo systemctl status containerd
+
+
+
+# This overwrites any existing configuration in /etc/yum.repos.d/kubernetes.repo
+=====================================================================================
+
+cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+EOF
+
+
+
+
+sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+systemctl start kubelet
+sudo systemctl enable --now kubelet
+systemctl status kubelet                                   ---------------------- ( here it will show as activating )
+
+
+
+
+join with token
+=====================
+
+kubeadm join 192.168.29.41:6443 --token s6tsrs.qz2lhd4e1bay82d0 --discovery-token-ca-cert-hash sha256:7fc597c9c402a763f5bf1a31192e1c7aabf8d196d90d83b835deeb40032ac4a5
+
+
+
+
+
+systemctl status kubelet                                   ---------------------- ( here it will show as active )
+
+
+kubeadm join 192.168.162.253:6443 --token w1ygir.xifxpbulx6fcmr8j \
+        --discovery-token-ca-cert-hash sha256:802ffbd9c4ea14bc6a8ce021921b05399713217f270c1e71124e3dcbb6528dd0
+

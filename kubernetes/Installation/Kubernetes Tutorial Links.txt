@@ -1,0 +1,4 @@
+Installing Master and Worker node on CentOs 7
+=====================================================
+
+https://youtu.be/nbp9zxkmi74?si=NJPX_nXgeH6MfERr

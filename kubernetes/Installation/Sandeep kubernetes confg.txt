@@ -1,0 +1,292 @@
+K8 Master configuration
+============================
+ip addr
+
+yum update
+
+hostname
+hostnamectl
+hostnamectl set-hostname MasterNode.Kubernetes.com       /              station10.example.com
+cat /etc/hostname
+bash
+
+yum install vim*  -y
+vim /etc/hosts
+192.168.29.70   MasterNode.Kubernetes.com                               xxx.xxx.xxx.xxx  station10.example.com
+192.168.29.144  WorkerNode1.Kubernetes.com                              xxx.xxx.xxx.xxx. station20.example.com
+192.168.29.241  WorkerNode2.Kubernetes.com                              xxx.xxx.xxx.xxx. station30.example.com
+ping -c 10 MasterNode.Kubernetes.com                                    ping station10.example.com
+ping -c 10 WorkerNode1.Kubernetes.com                                   ping station20.example.com
+ping -c 10 WorkerNode2.Kubernetes.com                                   ping station30.example.com
+
+#swap (disable swap Temporary)
+
+free -h
+swapoff -a
+free -h
+
+#swap (disable swap permanently)
+
+vim /etc/fstab
+#/dev/mapper/centos-swap swap                    swap    defaults        0 0
+(esc -> :wq!)
+
+
+yum install httpd
+vim /etc/ssh/sshd_config
+systemctl restart sshd
+
+
+Kubernetes Ports :-
+=========================================
+
+Protocol   Direction	     Port Range	         Purpose	              Used By
+TCP	   Inbound	     6443	         Kubernetes API server	        All
+TCP	   Inbound	     2379-2380	         etcd server client API	    kube-apiserver, etcd
+TCP	   Inbound	     10250	         Kubelet API	            Self, Control plane
+TCP	   Inbound	     10259	         kube-scheduler	                Self
+TCP	   Inbound	     10257	         kube-controller-manager	Self
+
+firewall-cmd --add-port={80,6443,10250,10259,10257,2379-2380}/tcp
+firewall-cmd --permanent --add-port={80,6443,10250,10259,10257,2379-2380}/tcp
+firewall-cmd --complete-reload
+firewall-cmd --list-all
+
+OR
+
+systemctl stop firewalld
+systemctl disable firewalld
+
+
+# Docker
+==================================== 
+
+yum install -y yum-utils
+sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo yum install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo systemctl status docker
+sudo systemctl start containerd
+sudo systemctl enable containerd
+sudo systemctl status containerd
+
+
+# Set SELinux in permissive mode (effectively disabling it)
+==============================================================
+
+sudo setenforce 0
+sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+
+
+# This overwrites any existing configuration in /etc/yum.repos.d/kubernetes.repo
+=====================================================================================
+
+cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+EOF
+
+
+
+Firewall Solution
+=====================================
+
+rm /etc/containerd/config.toml               -y
+systemctl restart containerd
+echo '1' > /proc/sys/net/ipv4/ip_forward
+modprobe bridge
+modprobe br_netfilter
+sudo systemctl status containerd
+
+
+
+sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+systemctl start kubelet
+sudo systemctl enable --now kubelet
+systemctl status kubelet                                   ---------------------- ( here it will show as activating )
+
+
+kubeadm init --ignore-preflight-errors=all
+
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+Or
+=====
+
+export KUBECONFIG=/etc/kubernetes/admin.conf
+
+systemctl status kubelet                                 ---------------------- ( here it will show as active )
+
+
+kubectl get nodes
+kubectl get pods -n kube-system
+
+
+Pod networking
+===========================
+
+
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml -O
+kubectl apply -f calico.yaml
+
+systemctl restart kubelet
+systemctl status kubelet                    ---------------------- ( here it will show as enabled and  active )
+
+ Or
+========
+
+
+kubeadm init --pod-network-cidr=192.168.0.0/16   or   kubeadm init --pod-network-cidr=10.244.0.0/16
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/custom-resources.yaml
+kubectl get pods -n calico-system
+kubectl get node
+
+
+After connection with worker
+====================================
+
+kubectl get nodes
+kubectl get pods -n kube-system -o wide
+
+
+
+
+#############################################################################################################################
+#############################################################################################################################
+
+
+
+
+K8 Worker configuration
+============================
+
+
+yum update
+
+hostname
+hostnamectl
+hostnamectl set-hostname WorkerNode1.Kubernetes.com       /              station20.example.com
+hostnamectl set-hostname WorkerNode2.Kubernetes.com       /             station30.example.com
+cat /etc/hostname
+bash
+
+yum install vim*  -y
+vim /etc/hosts
+192.168.29.124  MasterNode.Kubernetes.com                               xxx.xxx.xxx.xxx  station10.example.com
+192.168.29.242  WorkerNode1.Kubernetes.com                              xxx.xxx.xxx.xxx. station20.example.com
+192.168.29.77   WorkerNode2.Kubernetes.com                              xxx.xxx.xxx.xxx. station30.example.com
+ping -c 10 MasterNode.Kubernetes.com                                    ping station10.example.com
+ping -c 10 WorkerNode1.Kubernetes.com                                   ping station20.example.com
+ping -c 10 WorkerNode2.Kubernetes.com                                   ping station30.example.com
+
+free -h
+swapoff -a
+free -h
+vim /etc/fstab    
+#swap
+(esc -> :wq!)
+
+yum install httpd
+vim /etc/ssh/sshd_config
+systemctl restart sshd
+
+Kubernetes Ports :-
+=========================================
+
+Protocol   Direction	     Port Range	         Purpose	              Used By
+TCP	   Inbound	     6443	         Kubernetes API server	        All
+TCP	   Inbound	     2379-2380	         etcd server client API	    kube-apiserver, etcd
+TCP	   Inbound	     10250	         Kubelet API	            Self, Control plane
+TCP	   Inbound	     10259	         kube-scheduler	                Self
+TCP	   Inbound	     10257	         kube-controller-manager	Self
+
+firewall-cmd --add-port={6443,10250,10259,10257,2379-2380}/tcp
+firewall-cmd --permanent --add-port={6443,10250,10259,10257,2379-2380}/tcp
+firewall-cmd --complete-reload
+firewall-cmd --list-all
+
+OR
+
+systemctl stop firewalld
+systemctl disable firewalld
+
+# Docker
+==================================== 
+
+yum install -y yum-utils
+sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo yum install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin        -y
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo systemctl status docker
+sudo systemctl start containerd
+sudo systemctl enable containerd
+sudo systemctl status containerd
+
+# Set SELinux in permissive mode (effectively disabling it)
+==============================================================
+
+sudo setenforce 0
+sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+
+
+# This overwrites any existing configuration in /etc/yum.repos.d/kubernetes.repo
+=====================================================================================
+
+cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+EOF
+
+
+
+Solution
+=====================================
+
+rm /etc/containerd/config.toml               y
+systemctl restart containerd
+echo '1' > /proc/sys/net/ipv4/ip_forward
+modprobe bridge
+modprobe br_netfilter
+sudo systemctl status containerd
+
+
+
+sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+systemctl start kubelet
+sudo systemctl enable --now kubelet
+systemctl status kubelet                                  ---------------------- ( here it will show as activating )
+
+
+
+
+join with token
+=====================
+
+kubeadm join 192.168.29.70:6443 --token hgssga.nd3dbua8ydc8skk1 --discovery-token-ca-cert-hash sha256:c87893c80ef48c5566280f872ed442606c4eab2ce1803e8d6919a040d2c5b0fe
+
+
+
+kubeadm join 192.168.29.124:6443 --token p4stl0.1nodxwiyakncepcr  --discovery-token-ca-cert-hash sha256:e5b3ea5230a31b7ef82786305990b3427961b83b0680cfd579188300730bc51f
+
+kubeadm join 192.168.29.124:6443 --token gjj9wk.m068yic924icwq9d  --discovery-token-ca-cert-hash sha256:e5b3ea5230a31b7ef82786305990b3427961b83b0680cfd579188300730bc51f
+
+systemctl status kubelet                                   ---------------------- ( here it will show as active )
+
+
+
+

@@ -1,0 +1,79 @@
+kubeadm init creates an initial token with a 24-hour TTL
+
+While configuring Kubernetes cluster using kubeadm tool and joining Worker nodes into the cluster I received error.
+
+
+
+Run on master node - This will create new token
+====================================================
+
+kubeadm token create
+
+
+Replace the token created after --token then run on Worker node which needs to be joined to master node
+==========================================================================================================
+
+kubeadm join 192.168.29.124:6443 --token p4stl0.1nodxwiyakncepcr  --discovery-token-ca-cert-hash sha256:e5b3ea5230a31b7ef82786305990b3427961b83b0680cfd579188300730bc51f
+
+kubeadm join 192.168.29.124:6443 --token 63zzk6.1pl4iimpmdmjkjww --ignore-preflight-errors=all --discovery-token-ca-cert-hash sha256:e5b3ea5230a31b7ef82786305990b3427961b83b0680cfd579188300730bc51f   
+
+
+
+#############################################################################################################################
+						
+					   Alternate method
+
+While configuring Kubernetes cluster using kubeadm tool and joining Worker nodes into the cluster I receiving below error.
+
+root@k8sworker01:~#
+root@k8sworker01:~# kubeadm join 192.168.34.60:6443 --token tpxbcw.sk0f43qcxzm5ky61         --discovery-token-ca-cert-hash sha256:031b7d3401ab07e651f93403b5364db16ea323cebf34a7772a473009ac5b1de3
+[preflight] Running pre-flight checks
+error execution phase preflight: couldn't validate the identity of the API Server: could not find a JWS signature in the cluster-info ConfigMap for token ID "tpxbcw"
+To see the stack trace of this error execute with --v=5 or higher
+root@k8sworker01:~#
+
+
+Another error: Kubernetes kubeadm join couldn't validate the identity of the API server connection refused
+This error occurs due to expired token to join on the Control-Plane Kubernetes cluster. Generally newly created token is valid for 23 hours. You can create new token using below command on any of the Master node in the cluster. It generates join command. 
+
+
+root@k8smaster01:~#
+root@k8smaster01:~# kubeadm token create --print-join-command
+kubeadm join 192.168.34.60:6443 --token j1u0qk.u018y1nupk7qxg0x --discovery-token-ca-cert-hash sha256:031b7d3401ab07e651f93403b5364db16ea323cebf34a7772a473009ac5b1de3
+root@k8smaster01:~#
+
+Use the newly created join command on worker node and Worker node will be joined into cluster as shown below.
+
+root@k8sworker01:~#
+root@k8sworker01:~# kubeadm join 192.168.34.60:6443 --token j1u0qk.u018y1nupk7qxg0x --discovery-token-ca-cert-hash sha256:031b7d3401ab07e651f93403b5364db16ea323cebf34a7772a473009ac5b1de3
+[preflight] Running pre-flight checks
+[preflight] Reading configuration from the cluster...
+[preflight] FYI: You can look at this config file with 'kubectl -n kube-system get cm kubeadm-config -o yaml'
+[kubelet-start] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[kubelet-start] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[kubelet-start] Starting the kubelet
+[kubelet-start] Waiting for the kubelet to perform the TLS Bootstrap...
+
+This node has joined the cluster:
+* Certificate signing request was sent to apiserver and a response was received.
+* The Kubelet was informed of the new secure connection details.
+
+Run 'kubectl get nodes' on the control-plane to see this node join the cluster.
+
+root@k8sworker01:~#
+
+##########################################################################################################################
+Problem :2
+
+[preflight] Running pre-flight checks error execution phase preflight: [preflight] Some fatal errors occurred: [ERROR FileAvailable--etc-kubernetes-kubelet.conf]: /etc/kubernetes/kubelet.conf already exists [ERROR Port-10250]: Port 10250 is in use [ERROR FileAvailable--etc-kubernetes-pki-ca.crt]: /etc/kubernetes/pki/ca.crt already exists [preflight] If you know what you are doing, you can make a check non-fatal with `--ignore-preflight-errors=...` To see the stack trace of this error execute with --v=5 or higher
+
+
+kubeadm reset 
+kubeadm token create
+Replace the token created after --token then run on Worker node which needs to be joined to master node
+==========================================================================================================
+
+kubeadm join 192.168.29.124:6443 --token p4stl0.1nodxwiyakncepcr  --discovery-token-ca-cert-hash sha256:e5b3ea5230a31b7ef82786305990b3427961b83b0680cfd579188300730bc51f
+
+kubeadm join 192.168.29.124:6443 --token 63zzk6.1pl4iimpmdmjkjww --ignore-preflight-errors=all --discovery-token-ca-cert-hash sha256:e5b3ea5230a31b7ef82786305990b3427961b83b0680cfd579188300730bc51f 
+
